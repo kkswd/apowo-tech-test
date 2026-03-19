@@ -1,0 +1,827 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>网页版抽奖 - 终极版(含数据闭环)</title>
+    <style>
+      :root {
+        --bg: #0b1220;
+        --card: rgba(255, 255, 255, 0.06);
+        --card-border: rgba(255, 255, 255, 0.12);
+        --text: rgba(255, 255, 255, 0.92);
+        --muted: rgba(255, 255, 255, 0.7);
+        --primary: #6d5efc;
+        --primary-hover: #5a4df5;
+        --danger: #ff4d4f;
+        --danger-hover: #e64547;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        width: 100vw;
+        height: 100vh;
+        overflow: hidden;
+        /* 全屏深色渐变背景，留出给球体的“宇宙空间感” */
+        background:
+          radial-gradient(circle at 50% 15%, #1f2937 0, #020617 55%, #000 100%),
+          radial-gradient(circle at 10% 120%, rgba(56, 189, 248, 0.12), transparent 60%),
+          radial-gradient(circle at 90% -10%, rgba(248, 113, 113, 0.16), transparent 55%);
+        color: var(--text);
+        font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "PingFang SC", "Microsoft YaHei",
+          sans-serif;
+      }
+
+      /* 外层容器不再是卡片，只作为布局容器，全屏铺满 */
+      .app {
+        position: relative;
+        width: 100vw;
+        height: 100vh;
+      }
+
+      /* 顶部当前奖项标题 */
+      .header-title {
+        position: fixed;
+        top: 18px;
+        left: 50%;
+        transform: translateX(-50%);
+        padding: 8px 18px;
+        border-radius: 999px;
+        font-size: 14px;
+        letter-spacing: 0.8px;
+        color: rgba(226, 232, 240, 0.95);
+        background: radial-gradient(circle at 0 0, rgba(56, 189, 248, 0.35), transparent 55%),
+          radial-gradient(circle at 100% 100%, rgba(248, 113, 113, 0.28), transparent 55%),
+          rgba(15, 23, 42, 0.9);
+        border: 1px solid rgba(148, 163, 184, 0.75);
+        box-shadow:
+          0 0 0 1px rgba(15, 23, 42, 0.9),
+          0 12px 32px rgba(15, 23, 42, 0.95);
+        backdrop-filter: blur(12px);
+        z-index: 40;
+        white-space: nowrap;
+      }
+
+      .display {
+        position: absolute;
+        inset: 0;
+        text-align: center;
+        overflow: hidden;
+      }
+
+      .display::before,
+      .display::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+      }
+
+      .display::before {
+        background: linear-gradient(
+          to bottom,
+          rgba(11, 18, 32, 0.85),
+          rgba(11, 18, 32, 0) 25%,
+          rgba(11, 18, 32, 0) 75%,
+          rgba(11, 18, 32, 0.85)
+        );
+        opacity: 0.75;
+      }
+
+      /* =========================================================
+         第三阶段：3D 名字球体（Tag Cloud）
+         ========================================================= */
+
+      .stage {
+        position: absolute;
+        inset: 0;
+        display: grid;
+        place-items: center;
+        perspective: 900px;
+        perspective-origin: 50% 50%;
+      }
+
+      .sphere {
+        position: relative;
+        width: min(480px, 60vw, 60vh);
+        height: min(480px, 60vw, 60vh);
+        transform-style: preserve-3d;
+        animation: idleBreath 4.5s ease-in-out infinite;
+      }
+
+      @keyframes idleBreath {
+        0%,
+        100% { transform: translateZ(0) scale(1); }
+        50% { transform: translateZ(0) scale(1.02); }
+      }
+
+      /* 奖项管理侧栏 */
+      .prize-panel {
+        position: fixed;
+        left: 20px;
+        top: 50%;
+        transform: translateY(-50%);
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        z-index: 35;
+      }
+
+      .prize-card {
+        width: 180px;
+        padding: 10px 10px 9px;
+        border-radius: 14px;
+        background: radial-gradient(circle at 0 0, rgba(148, 163, 184, 0.32), transparent 60%),
+          rgba(15, 23, 42, 0.82);
+        border: 1px solid rgba(148, 163, 184, 0.7);
+        box-shadow:
+          0 0 0 1px rgba(15, 23, 42, 0.9),
+          0 14px 36px rgba(15, 23, 42, 0.95);
+        backdrop-filter: blur(12px);
+        display: grid;
+        grid-template-columns: 36px 1fr;
+        grid-template-rows: auto auto;
+        column-gap: 10px;
+        row-gap: 4px;
+        cursor: pointer;
+        transition: all 0.15s ease;
+      }
+
+      .prize-card:hover {
+        transform: translateY(-1px);
+        box-shadow:
+          0 0 0 1px rgba(248, 250, 252, 0.35),
+          0 18px 40px rgba(15, 23, 42, 1);
+      }
+
+      .prize-card.is-active {
+        background: radial-gradient(circle at 0 0, rgba(248, 113, 113, 0.7), transparent 55%),
+          radial-gradient(circle at 100% 100%, rgba(56, 189, 248, 0.65), transparent 55%),
+          rgba(15, 23, 42, 0.94);
+        border-color: rgba(248, 113, 113, 0.95);
+        box-shadow:
+          0 0 0 1px rgba(248, 113, 113, 0.95),
+          0 0 22px rgba(248, 113, 113, 0.9),
+          0 18px 50px rgba(15, 23, 42, 1);
+      }
+
+      /* 奖项抽完变灰 */
+      .prize-card.is-empty {
+        opacity: 0.4;
+        filter: grayscale(1);
+        cursor: not-allowed;
+      }
+
+      .prize-thumb {
+        width: 36px;
+        height: 36px;
+        border-radius: 10px;
+        background: radial-gradient(circle at 0 0, rgba(248, 250, 252, 0.85), transparent 60%),
+          rgba(15, 23, 42, 0.9);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 18px;
+        color: rgba(15, 23, 42, 0.98);
+        box-shadow: 0 8px 22px rgba(15, 23, 42, 0.9);
+      }
+
+      .prize-name {
+        font-size: 13px;
+        font-weight: 700;
+        letter-spacing: 0.6px;
+        color: rgba(226, 232, 240, 0.96);
+      }
+
+      .prize-count {
+        font-size: 12px;
+        color: rgba(148, 163, 184, 0.96);
+      }
+
+      .prize-badge {
+        grid-column: 1 / -1;
+        justify-self: flex-start;
+        padding: 2px 8px;
+        border-radius: 999px;
+        font-size: 10px;
+        letter-spacing: 0.3px;
+        color: rgba(226, 232, 240, 0.9);
+        background: rgba(30, 64, 175, 0.8);
+      }
+
+      .tag {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        transform-style: preserve-3d;
+        transform: translate3d(0, 0, 0);
+        transform-origin: center;
+        padding: 8px 12px;
+        border-radius: 999px;
+        font-weight: 900;
+        letter-spacing: 0.6px;
+        font-size: 16px;
+        color: rgba(255, 255, 255, 0.88);
+        background: rgba(255, 255, 255, 0.06);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        box-shadow: 0 12px 34px rgba(0, 0, 0, 0.22);
+        user-select: none;
+        white-space: nowrap;
+        will-change: transform, opacity, filter;
+        transition: opacity 220ms ease, filter 220ms ease;
+      }
+
+      .tag.is-dimmed {
+        opacity: 0.14 !important;
+        filter: blur(1.4px) saturate(0.8) !important;
+      }
+
+      /* 开奖高光层 */
+      .winner-overlay {
+        position: fixed;
+        inset: 0;
+        display: grid;
+        place-items: center;
+        background: rgba(0, 0, 0, 0.55);
+        backdrop-filter: blur(10px);
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 160ms ease;
+        z-index: 90;
+      }
+
+      .winner-overlay.is-open {
+        opacity: 1;
+        pointer-events: auto;
+      }
+
+      .winner-card {
+        padding: 18px 22px 20px;
+        border-radius: 18px;
+        background: rgba(20, 26, 44, 0.9);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        box-shadow: 0 22px 80px rgba(0, 0, 0, 0.5);
+        text-align: center;
+        min-width: min(520px, calc(100vw - 40px));
+      }
+
+      .winner-title {
+        margin: 0;
+        font-size: 14px;
+        letter-spacing: 0.6px;
+        color: rgba(255, 255, 255, 0.72);
+      }
+
+      .winner-name {
+        margin: 16px 0 18px;
+        font-size: 52px;
+        font-weight: 1000;
+        letter-spacing: 1px;
+        line-height: 1.05;
+        background: linear-gradient(90deg, rgba(255, 38, 66, 1), rgba(255, 205, 77, 1));
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
+        text-shadow: 0 18px 44px rgba(255, 38, 66, 0.25);
+      }
+
+      .winner-actions {
+        margin-top: 10px;
+        display: flex;
+        justify-content: center;
+      }
+
+      .winner-overlay.is-open .winner-card {
+        animation: popSpring 520ms cubic-bezier(0.2, 0.9, 0.2, 1.05) both;
+      }
+
+      .controls {
+        position: fixed;
+        left: 50%;
+        bottom: 10%;
+        transform: translateX(-50%);
+        z-index: 50;
+      }
+
+      /* 统一按钮样式 */
+      .base-btn {
+        appearance: none;
+        border: none;
+        border-radius: 999px;
+        cursor: pointer;
+        color: white;
+        background: radial-gradient(circle at 0 0, rgba(56, 189, 248, 0.9), transparent 55%),
+          radial-gradient(circle at 100% 100%, rgba(248, 113, 113, 0.9), transparent 55%),
+          rgba(15, 23, 42, 0.9);
+        box-shadow:
+          0 0 0 1px rgba(148, 163, 184, 0.6),
+          0 0 18px rgba(56, 189, 248, 0.95),
+          0 0 38px rgba(248, 113, 113, 0.95),
+          0 20px 50px rgba(15, 23, 42, 0.95);
+        backdrop-filter: blur(10px);
+        transition: transform 0.12s ease, opacity 0.15s ease;
+      }
+      .base-btn:active { transform: translateY(1px) scale(0.98); }
+
+      /* 中间的开始按钮 */
+      .main-btn {
+        padding: 14px 32px;
+        font-size: 18px;
+        font-weight: 700;
+        min-width: 200px;
+      }
+      .main-btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+        filter: grayscale(1);
+      }
+
+      /* 弹窗里的关闭按钮 */
+      .close-btn {
+        padding: 10px 28px;
+        font-size: 16px;
+        min-width: 160px;
+      }
+
+      /* =========================================================
+         新增：右上方【获奖名单】入口按钮 & 右侧滑出抽屉
+         ========================================================= */
+      .history-btn {
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        padding: 8px 16px;
+        font-size: 14px;
+        font-weight: bold;
+        z-index: 60;
+      }
+
+      .winner-drawer-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.4);
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.3s ease;
+        z-index: 100;
+      }
+
+      .winner-drawer-overlay.is-open {
+        opacity: 1;
+        pointer-events: auto;
+      }
+
+      .winner-drawer {
+        position: absolute;
+        top: 0;
+        right: 0;
+        width: 320px;
+        height: 100vh;
+        background: rgba(15, 23, 42, 0.85);
+        backdrop-filter: blur(16px);
+        border-left: 1px solid rgba(255, 255, 255, 0.1);
+        box-shadow: -10px 0 40px rgba(0, 0, 0, 0.5);
+        transform: translateX(100%);
+        transition: transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+        display: flex;
+        flex-direction: column;
+        padding: 24px;
+      }
+
+      .winner-drawer-overlay.is-open .winner-drawer {
+        transform: translateX(0);
+      }
+
+      .drawer-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        padding-bottom: 16px;
+        margin-bottom: 16px;
+      }
+
+      .drawer-title {
+        margin: 0;
+        font-size: 18px;
+        color: #fff;
+      }
+
+      .drawer-close {
+        background: transparent;
+        border: none;
+        color: #fff;
+        font-size: 24px;
+        cursor: pointer;
+        padding: 0;
+        line-height: 1;
+      }
+
+      .drawer-content {
+        flex: 1;
+        overflow-y: auto;
+      }
+
+      /* 抽屉内名单列表样式 */
+      .history-group {
+        margin-bottom: 20px;
+      }
+      .history-group-title {
+        font-size: 14px;
+        color: #f87171;
+        margin-bottom: 8px;
+        border-bottom: 1px dashed rgba(255,255,255,0.2);
+        padding-bottom: 4px;
+      }
+      .history-item {
+        font-size: 15px;
+        color: #e2e8f0;
+        padding: 6px 0;
+        display: flex;
+        justify-content: space-between;
+      }
+      .empty-tip {
+        color: #94a3b8;
+        font-size: 14px;
+        text-align: center;
+        margin-top: 40px;
+      }
+
+      .sr-only {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
+      }
+      @keyframes popSpring {
+        0% { transform: translateY(18px) scale(0.1); opacity: 0; }
+        65% { transform: translateY(0) scale(1.2); opacity: 1; }
+        100% { transform: translateY(0) scale(1); opacity: 1; }
+      }
+    </style>
+  </head>
+
+  <body>
+    <div id="currentPrizeTitle" class="header-title">正在抽取：未选择奖项</div>
+
+    <aside class="prize-panel" aria-label="奖项管理">
+      <div class="prize-card" data-prize-id="0">
+        <div class="prize-thumb">特</div>
+        <div>
+          <div class="prize-name">特等奖</div>
+          <div class="prize-count" data-prize-count="0">0/0</div>
+        </div>
+        <div class="prize-badge">限量大奖</div>
+      </div>
+      <div class="prize-card" data-prize-id="1">
+        <div class="prize-thumb">一</div>
+        <div>
+          <div class="prize-name">一等奖</div>
+          <div class="prize-count" data-prize-count="1">0/0</div>
+        </div>
+        <div class="prize-badge">核心奖项</div>
+      </div>
+      <div class="prize-card" data-prize-id="2">
+        <div class="prize-thumb">二</div>
+        <div>
+          <div class="prize-name">二等奖</div>
+          <div class="prize-count" data-prize-count="2">0/0</div>
+        </div>
+        <div class="prize-badge">普惠奖项</div>
+      </div>
+    </aside>
+
+    <main class="app" role="application" aria-label="3D 名字球体抽奖全屏版">
+      <section class="display" aria-label="名字展示区">
+        <div class="stage" aria-hidden="true">
+          <div id="sphere" class="sphere"></div>
+        </div>
+        <div id="name" class="sr-only" aria-live="polite">待机中</div>
+      </section>
+    </main>
+
+    <div class="controls">
+      <button id="toggleBtn" class="base-btn main-btn" type="button">
+        <span id="btnText">开始</span>
+      </button>
+    </div>
+
+    <div id="winnerOverlay" class="winner-overlay" role="dialog" aria-modal="true" aria-hidden="true">
+      <div class="winner-card" role="document">
+        <h2 class="winner-title">本次中奖者</h2>
+        <div id="winnerName" class="winner-name">—</div>
+        <div class="winner-actions">
+          <button id="closeWinnerBtn" class="base-btn close-btn" type="button">关闭</button>
+        </div>
+      </div>
+    </div>
+
+    <button id="openHistoryBtn" class="base-btn history-btn">🏆 获奖名单</button>
+
+    <div id="drawerOverlay" class="winner-drawer-overlay">
+      <div class="winner-drawer">
+        <div class="drawer-header">
+          <h3 class="drawer-title">中奖统计榜单</h3>
+          <button id="closeDrawerBtn" class="drawer-close">&times;</button>
+        </div>
+        <div id="drawerContent" class="drawer-content">
+          </div>
+      </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+    <script>
+      // 1) 数据源
+      let candidates = ["张三", "李四", "王五", "赵六", "钱七", "孙八", "周九", "吴十", "郑十一", "王十二", "刘十三", "陈十四", "杨十五", "黄十六", "周十七", "胡十八", "高十九", "林二十", "何二一", "郭二二"];
+      
+      const prizes = [
+        { id: 0, name: "特等奖", total: 1, remaining: 1 },
+        { id: 1, name: "一等奖", total: 3, remaining: 3 },
+        { id: 2, name: "二等奖", total: 10, remaining: 10 },
+      ];
+      let currentPrizeIndex = null; 
+
+      // 【新增】核心数据池：记录每一次中奖的人
+      const winnersList = [];
+
+      // 2) 取 DOM
+      const nameEl = document.getElementById("name");
+      const sphereEl = document.getElementById("sphere");
+      const toggleBtn = document.getElementById("toggleBtn");
+      const btnTextEl = document.getElementById("btnText");
+      const winnerOverlayEl = document.getElementById("winnerOverlay");
+      const winnerNameEl = document.getElementById("winnerName");
+      const closeWinnerBtn = document.getElementById("closeWinnerBtn");
+      const currentPrizeTitleEl = document.getElementById("currentPrizeTitle");
+      const prizeCards = Array.from(document.querySelectorAll(".prize-card"));
+      
+      // 抽屉 DOM
+      const openHistoryBtn = document.getElementById("openHistoryBtn");
+      const closeDrawerBtn = document.getElementById("closeDrawerBtn");
+      const drawerOverlay = document.getElementById("drawerOverlay");
+      const drawerContent = document.getElementById("drawerContent");
+
+      // 3) 运行状态
+      let isRunning = false; 
+      let hasWinner = false; 
+      let rotX = 0.25;
+      let rotY = 0;
+      let omega = 0.25; 
+      let targetOmega = 0.25;
+      let R = 140;
+      const points = []; 
+      let winnerIndex = -1;
+
+      // 工具函数
+      function randomInt(max) { return Math.floor(Math.random() * max); }
+
+      function buildSphere() {
+        sphereEl.innerHTML = "";
+        points.length = 0;
+        hasWinner = false;
+        winnerIndex = -1;
+
+        const rect = sphereEl.getBoundingClientRect();
+        R = Math.max(110, Math.min(rect.width, rect.height) * 0.46);
+        const N = candidates.length;
+        const goldenAngle = Math.PI * (3 - Math.sqrt(5)); 
+
+        for (let i = 0; i < N; i++) {
+          const y = 1 - (2 * (i + 0.5)) / N; 
+          const r = Math.sqrt(1 - y * y);
+          const theta = goldenAngle * i;
+          const x = Math.cos(theta) * r;
+          const z = Math.sin(theta) * r;
+
+          const el = document.createElement("div");
+          el.className = "tag";
+          el.textContent = candidates[i];
+          sphereEl.appendChild(el);
+
+          points.push({ name: candidates[i], x: x * R, y: y * R, z: z * R, el });
+        }
+      }
+
+      function rotatePoint(p, ax, ay) {
+        const cosY = Math.cos(ay), sinY = Math.sin(ay);
+        const cosX = Math.cos(ax), sinX = Math.sin(ax);
+        let x = p.x * cosY + p.z * sinY;
+        let z = -p.x * sinY + p.z * cosY;
+        let y = p.y;
+        const y2 = y * cosX - z * sinX;
+        const z2 = y * sinX + z * cosX;
+        return { x, y: y2, z: z2 };
+      }
+
+      function renderFrame() {
+        for (let i = 0; i < points.length; i++) {
+          const p = points[i];
+          const v = rotatePoint(p, rotX, rotY);
+          const depth01 = (v.z + R) / (2 * R); 
+          const scale = 0.55 + depth01 * 0.9; 
+          const opacity = 0.2 + depth01 * 0.85; 
+          const blur = (1 - depth01) * 1.4; 
+
+          p.el.style.transform = `translate(-50%, -50%) translate3d(${v.x}px, ${v.y}px, ${v.z}px) scale(${scale})`;
+          p.el.style.opacity = opacity.toFixed(3);
+          p.el.style.filter = `blur(${blur.toFixed(2)}px)`;
+          p.el.style.zIndex = String(Math.floor(depth01 * 1000));
+        }
+      }
+
+      let lastTs = performance.now();
+      function tick(ts) {
+        const dt = Math.min(0.05, (ts - lastTs) / 1000); 
+        lastTs = ts;
+        omega += (targetOmega - omega) * (1 - Math.pow(0.001, dt));
+        rotY += omega * dt;
+        rotX += omega * 0.25 * dt; 
+        renderFrame();
+        requestAnimationFrame(tick);
+      }
+
+      function start() {
+        if (isRunning || winnerOverlayEl.classList.contains("is-open")) return;
+        
+        // 防呆拦截
+        if (currentPrizeIndex === null) {
+          alert("请先在左侧选择一个奖项！");
+          return;
+        }
+        if (prizes[currentPrizeIndex].remaining <= 0) {
+          alert("该奖项已被抽完啦！");
+          return;
+        }
+
+        isRunning = true;
+        hasWinner = false;
+        winnerIndex = -1;
+        btnTextEl.textContent = "停止";
+        targetOmega = 7.5; // 加速
+
+        for (const p of points) p.el.classList.remove("is-dimmed");
+      }
+
+      function stop() {
+        if (!isRunning) return;
+        isRunning = false;
+        btnTextEl.textContent = "开始";
+        targetOmega = 0.22; // 减速
+        
+        // 随机抽一个
+        winnerIndex = randomInt(points.length);
+        
+        const check = () => {
+          if (hasWinner) return;
+          if (Math.abs(omega - targetOmega) < 0.25) {
+            revealWinner();
+            return;
+          }
+          requestAnimationFrame(check);
+        };
+        requestAnimationFrame(check);
+      }
+
+      function revealWinner() {
+        if (winnerIndex < 0) return;
+        hasWinner = true;
+        const winner = points[winnerIndex];
+
+        // 【闭环核心逻辑】：扣库存 + 记录数据
+        if (currentPrizeIndex !== null) {
+          const prize = prizes[currentPrizeIndex];
+          if (prize.remaining > 0) {
+            prize.remaining -= 1;
+            // 将获奖数据推入数组
+            winnersList.push({
+              prizeId: prize.id,
+              prizeName: prize.name,
+              winnerName: winner.name
+            });
+            // 如果你希望同一个人不中两次，可以在这里把 winner.name 从 candidates 中剔除并重建球体
+            updatePrizePanel(); 
+          }
+        }
+
+        // 视觉呈现
+        for (let i = 0; i < points.length; i++) {
+          if (i !== winnerIndex) points[i].el.classList.add("is-dimmed");
+        }
+        winnerNameEl.textContent = winner.name;
+        winnerOverlayEl.classList.add("is-open");
+
+        if (typeof window.confetti === "function") {
+          const base = { particleCount: 90, spread: 80, startVelocity: 48, gravity: 0.9, scalar: 1.1, ticks: 200 };
+          window.confetti({ ...base, origin: { x: 0.5, y: 0.28 } });
+          window.confetti({ ...base, particleCount: 60, angle: 60, origin: { x: 0.18, y: 0.35 } });
+          window.confetti({ ...base, particleCount: 60, angle: 120, origin: { x: 0.82, y: 0.35 } });
+        }
+      }
+
+      function closeWinner() {
+        winnerOverlayEl.classList.remove("is-open");
+        targetOmega = 0.25;
+        for (const p of points) p.el.classList.remove("is-dimmed");
+      }
+
+      toggleBtn.addEventListener("click", () => { isRunning ? stop() : start(); });
+      closeWinnerBtn.addEventListener("click", closeWinner);
+      
+      // 奖项管理逻辑
+      function updatePrizePanel() {
+        prizeCards.forEach((card) => {
+          const id = Number(card.getAttribute("data-prize-id"));
+          const prize = prizes.find((p) => p.id === id);
+          const countEl = card.querySelector('[data-prize-count]');
+          if (prize && countEl) countEl.textContent = `${prize.remaining}/${prize.total}`;
+
+          // 判断选中态和空状态
+          if (currentPrizeIndex !== null && prizes[currentPrizeIndex].id === id) {
+            card.classList.add("is-active");
+          } else {
+            card.classList.remove("is-active");
+          }
+          
+          if (prize.remaining === 0) {
+            card.classList.add("is-empty");
+          }
+        });
+
+        if (currentPrizeIndex === null) {
+          currentPrizeTitleEl.textContent = "正在抽取：未选择奖项";
+        } else {
+          currentPrizeTitleEl.textContent = `正在抽取：${prizes[currentPrizeIndex].name}`;
+        }
+      }
+
+      prizeCards.forEach((card) => {
+        card.addEventListener("click", () => {
+          const id = Number(card.getAttribute("data-prize-id"));
+          const index = prizes.findIndex((p) => p.id === id);
+          if (index === -1) return;
+          // 如果库存为0，不让选（或者只让选但不能抽，由产品逻辑决定，这里允许选中但提示）
+          currentPrizeIndex = index;
+          updatePrizePanel();
+          
+          // 脉冲动画表示切换
+          const originalRotX = rotX;
+          rotX = originalRotX + 0.35;
+          setTimeout(() => { rotX = originalRotX; }, 260);
+        });
+      });
+
+      // 【新增】抽屉渲染逻辑
+      function renderWinnersDrawer() {
+        if (winnersList.length === 0) {
+          drawerContent.innerHTML = '<div class="empty-tip">暂无中奖数据...</div>';
+          return;
+        }
+
+        // 按奖项分组展示
+        let htmlStr = '';
+        prizes.forEach(prize => {
+          const groupWinners = winnersList.filter(w => w.prizeId === prize.id);
+          if (groupWinners.length > 0) {
+            htmlStr += `<div class="history-group">
+                          <div class="history-group-title">❖ ${prize.name} (${groupWinners.length}人)</div>`;
+            groupWinners.forEach(w => {
+              htmlStr += `<div class="history-item"><span>${w.winnerName}</span><span>🎊</span></div>`;
+            });
+            htmlStr += `</div>`;
+          }
+        });
+        drawerContent.innerHTML = htmlStr;
+      }
+
+      openHistoryBtn.addEventListener('click', () => {
+        renderWinnersDrawer(); // 每次打开前重新渲染最新数据
+        drawerOverlay.classList.add('is-open');
+      });
+
+      closeDrawerBtn.addEventListener('click', () => {
+        drawerOverlay.classList.remove('is-open');
+      });
+
+      drawerOverlay.addEventListener('click', (e) => {
+        if (e.target === drawerOverlay) drawerOverlay.classList.remove('is-open');
+      });
+
+      // 初始化
+      buildSphere();
+      renderFrame();
+      requestAnimationFrame(tick);
+      updatePrizePanel();
+
+      window.addEventListener("resize", () => { buildSphere(); });
+    </script>
+  </body>
+</html>

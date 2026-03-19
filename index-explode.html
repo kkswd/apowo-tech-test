@@ -1,0 +1,312 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>网页版抽奖 - 阶段一基础版</title>
+    <style>
+      :root {
+        --bg: #0b1220;
+        --card: rgba(255, 255, 255, 0.06);
+        --card-border: rgba(255, 255, 255, 0.12);
+        --text: rgba(255, 255, 255, 0.92);
+        --muted: rgba(255, 255, 255, 0.7);
+        --primary: #6d5efc;
+        --primary-hover: #5a4df5;
+        --danger: #ff4d4f;
+        --danger-hover: #e64547;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        background: radial-gradient(1200px 800px at 20% 10%, rgba(109, 94, 252, 0.35), transparent 60%),
+          radial-gradient(900px 650px at 85% 90%, rgba(255, 77, 79, 0.22), transparent 55%),
+          var(--bg);
+        color: var(--text);
+        font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "PingFang SC", "Microsoft YaHei",
+          sans-serif;
+      }
+
+      .app {
+        width: min(560px, calc(100vw - 32px));
+        padding: 28px;
+        background: var(--card);
+        border: 1px solid var(--card-border);
+        border-radius: 16px;
+        backdrop-filter: blur(10px);
+        box-shadow: 0 18px 60px rgba(0, 0, 0, 0.35);
+      }
+
+      .title {
+        margin: 0 0 16px;
+        font-size: 18px;
+        letter-spacing: 0.5px;
+        color: var(--muted);
+      }
+
+      .display {
+        height: 120px;
+        border-radius: 14px;
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        background: rgba(0, 0, 0, 0.18);
+        display: grid;
+        place-items: center;
+        text-align: center;
+        overflow: hidden;
+        position: relative;
+      }
+
+      .display::before,
+      .display::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+      }
+
+      /* 轻微的“滚动遮罩”效果，让快速切换更像在滚动 */
+      .display::before {
+        background: linear-gradient(
+          to bottom,
+          rgba(11, 18, 32, 0.85),
+          rgba(11, 18, 32, 0) 25%,
+          rgba(11, 18, 32, 0) 75%,
+          rgba(11, 18, 32, 0.85)
+        );
+        opacity: 0.75;
+      }
+
+      .name {
+        font-size: 42px;
+        font-weight: 700;
+        letter-spacing: 1px;
+        padding: 0 16px;
+        line-height: 1.1;
+        text-shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
+      }
+
+      .hint {
+        margin: 12px 0 0;
+        font-size: 12px;
+        color: rgba(255, 255, 255, 0.65);
+        line-height: 1.6;
+      }
+
+      .controls {
+        margin-top: 18px;
+        display: flex;
+        gap: 12px;
+        justify-content: center;
+      }
+
+      button {
+        appearance: none;
+        border: none;
+        border-radius: 12px;
+        padding: 12px 18px;
+        font-size: 16px;
+        font-weight: 700;
+        cursor: pointer;
+        color: white;
+        min-width: 140px;
+        transition: transform 0.08s ease, background-color 0.15s ease, opacity 0.15s ease;
+        box-shadow: 0 12px 34px rgba(0, 0, 0, 0.28);
+      }
+
+      button:active {
+        transform: translateY(1px) scale(0.99);
+      }
+
+      .btn-start {
+        background: var(--primary);
+      }
+
+      .btn-start:hover {
+        background: var(--primary-hover);
+      }
+
+      .btn-stop {
+        background: var(--danger);
+      }
+
+      .btn-stop:hover {
+        background: var(--danger-hover);
+      }
+
+      .sr-only {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
+      }
+    </style>
+  </head>
+
+  <body>
+    <main class="app" role="application" aria-label="网页版抽奖应用">
+      <h1 class="title">基础抽奖</h1>
+
+      <section class="display" aria-label="名字展示区">
+        <div id="name" class="name" aria-live="polite">准备开始</div>
+      </section>
+
+      <p class="hint">
+        点击“开始”后，名字会快速随机切换；点击“停止”会定格在一个中奖者上，并弹窗提示。
+      </p>
+
+      <div class="controls">
+        <button id="toggleBtn" class="btn-start" type="button">
+          <span id="btnText">开始</span>
+          <span class="sr-only" id="btnState">未开始</span>
+        </button>
+      </div>
+    </main>
+
+    <script>
+      /**********************************************************************
+       * 阶段一：最基础抽奖逻辑（请重点看 setInterval 和 Math.random 的注释）
+       *
+       * 你后续要“手写核心业务逻辑”，因此这里刻意使用最朴素的写法：
+       * - 数据源：一个 JS 数组（抽奖池）
+       * - 开始：用 setInterval 周期性随机取一个名字，快速刷新到展示区
+       * - 停止：clearInterval 停掉定时器，名字就定格；再 alert 提示中奖者
+       **********************************************************************/
+
+      // 1) 数据源：模拟 10 个名字作为抽奖池
+      //    说明：真实业务里可能来自接口/文件/表单输入，但这里先用固定数组即可。
+      const candidates = [
+        "张三",
+        "李四",
+        "王五",
+        "赵六",
+        "钱七",
+        "孙八",
+        "周九",
+        "吴十",
+        "郑十一",
+        "王十二",
+      ];
+
+      // 2) 取 DOM：展示区和按钮
+      const nameEl = document.getElementById("name");
+      const toggleBtn = document.getElementById("toggleBtn");
+      const btnTextEl = document.getElementById("btnText");
+      const btnStateEl = document.getElementById("btnState");
+
+      // 3) 运行状态变量
+      //    timerId：保存 setInterval 返回的“定时器编号”
+      //    isRunning：表示当前是否正在滚动抽奖
+      let timerId = null;
+      let isRunning = false;
+
+      // 4) 工具函数：生成一个 [0, max) 的随机整数（重点：Math.random）
+      function randomInt(max) {
+        /********************************************************************
+         * Math.random() 会返回一个 [0, 1) 的小数：
+         * - 最小可能接近 0（例如 0.0001）
+         * - 最大永远达不到 1（例如 0.9999...），因此是“左闭右开区间”
+         *
+         * 我们要从数组里随机选一个元素，需要一个“整数下标”：
+         * - 数组长度为 max
+         * - 合法下标范围是 0 ~ max-1
+         *
+         * 计算思路：
+         * 1) Math.random() * max  -> 得到 [0, max) 的小数
+         * 2) Math.floor(...)      -> 向下取整，得到 0 ~ max-1 的整数
+         *
+         * 例子（假设 max=10）：
+         * - random = 0.00... -> random*10 ≈ 0.0  -> floor=0
+         * - random = 0.53... -> random*10 ≈ 5.3  -> floor=5
+         * - random = 0.99... -> random*10 ≈ 9.9  -> floor=9
+         ********************************************************************/
+        return Math.floor(Math.random() * max);
+      }
+
+      // 5) 开始滚动：用 setInterval 让名字“快速随机切换”
+      function startRolling() {
+        /********************************************************************
+         * setInterval(fn, delay) 的作用：
+         * - 每隔 delay 毫秒，重复执行一次 fn
+         * - 它会返回一个 timerId（数字），你需要保存起来
+         *
+         * 为什么必须保存 timerId？
+         * - 因为停止时要调用 clearInterval(timerId)
+         * - 如果你不保存，就不知道要停止“哪一个”定时器
+         *
+         * 这里我们设置 delay=60ms：
+         * - 60ms 大约每秒 16 次刷新（1000/60≈16.6）
+         * - 人眼会感觉到“快速滚动”的切换效果
+         *
+         * 注意点（也是笔试常考点）：
+         * - 如果你连续点击“开始”多次，可能创建多个定时器叠加，导致越滚越快
+         * - 所以我们用 isRunning 做保护：已经在滚动就不重复创建
+         ********************************************************************/
+
+        if (isRunning) return;
+
+        isRunning = true;
+        btnTextEl.textContent = "停止";
+        btnStateEl.textContent = "进行中";
+        toggleBtn.classList.remove("btn-start");
+        toggleBtn.classList.add("btn-stop");
+
+        // 关键：创建定时器，并把返回值保存到 timerId
+        timerId = setInterval(() => {
+          // 每次 tick 都随机一个下标
+          const idx = randomInt(candidates.length);
+          // 用下标取出名字，并展示在 UI 上
+          nameEl.textContent = candidates[idx];
+        }, 60);
+      }
+
+      // 6) 停止滚动：clearInterval 停掉定时器 + 弹窗提示
+      function stopRolling() {
+        /********************************************************************
+         * clearInterval(timerId) 的作用：
+         * - 停止由 setInterval 创建的“周期性执行”
+         *
+         * 停止后为什么名字会“定格”？
+         * - 因为 UI 的更新只发生在 setInterval 的回调里
+         * - 一旦定时器停了，回调不再执行，nameEl.textContent 不再被刷新
+         * - 展示区自然就停在最后一次更新的那个名字上
+         ********************************************************************/
+
+        if (!isRunning) return;
+
+        clearInterval(timerId);
+        timerId = null;
+        isRunning = false;
+
+        btnTextEl.textContent = "开始";
+        btnStateEl.textContent = "未开始";
+        toggleBtn.classList.remove("btn-stop");
+        toggleBtn.classList.add("btn-start");
+
+        const winner = nameEl.textContent;
+        alert("恭喜中奖者：" + winner);
+      }
+
+      // 7) 单按钮切换：开始 <-> 停止
+      toggleBtn.addEventListener("click", () => {
+        if (isRunning) stopRolling();
+        else startRolling();
+      });
+
+      // 8) 初始化展示一个默认名字（可选，但体验更像“已准备好”）
+      nameEl.textContent = candidates[randomInt(candidates.length)];
+    </script>
+  </body>
+</html>
+

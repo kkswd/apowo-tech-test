@@ -1,0 +1,552 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>网页版抽奖 - 阶段一基础版</title>
+    <style>
+      :root {
+        --bg: #0b1220;
+        --card: rgba(255, 255, 255, 0.06);
+        --card-border: rgba(255, 255, 255, 0.12);
+        --text: rgba(255, 255, 255, 0.92);
+        --muted: rgba(255, 255, 255, 0.7);
+        --primary: #6d5efc;
+        --primary-hover: #5a4df5;
+        --danger: #ff4d4f;
+        --danger-hover: #e64547;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        background: radial-gradient(1200px 800px at 20% 10%, rgba(109, 94, 252, 0.35), transparent 60%),
+          radial-gradient(900px 650px at 85% 90%, rgba(255, 77, 79, 0.22), transparent 55%),
+          var(--bg);
+        color: var(--text);
+        font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "PingFang SC", "Microsoft YaHei",
+          sans-serif;
+      }
+
+      .app {
+        width: min(560px, calc(100vw - 32px));
+        padding: 28px;
+        background: var(--card);
+        border: 1px solid var(--card-border);
+        border-radius: 16px;
+        backdrop-filter: blur(10px);
+        box-shadow: 0 18px 60px rgba(0, 0, 0, 0.35);
+      }
+
+      .title {
+        margin: 0 0 16px;
+        font-size: 18px;
+        letter-spacing: 0.5px;
+        color: var(--muted);
+      }
+
+      .display {
+        height: 120px;
+        border-radius: 14px;
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        background: rgba(0, 0, 0, 0.18);
+        text-align: center;
+        overflow: hidden;
+        position: relative;
+      }
+
+      .display::before,
+      .display::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+      }
+
+      /* 轻微的“滚动遮罩”效果，让快速切换更像在滚动 */
+      .display::before {
+        background: linear-gradient(
+          to bottom,
+          rgba(11, 18, 32, 0.85),
+          rgba(11, 18, 32, 0) 25%,
+          rgba(11, 18, 32, 0) 75%,
+          rgba(11, 18, 32, 0.85)
+        );
+        opacity: 0.75;
+      }
+
+      .name {
+        font-size: 42px;
+        font-weight: 700;
+        letter-spacing: 1px;
+        padding: 0 16px;
+        line-height: 1.1;
+        text-shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
+      }
+
+      /* 展示区：升级为“滚动列表” */
+      .roller {
+        position: absolute;
+        inset: 0;
+        display: grid;
+        place-items: center;
+        padding: 16px 14px;
+      }
+
+      .roller-track {
+        /* 关键：通过 translateY 来做“滚动感” */
+        will-change: transform;
+        transition: transform 120ms cubic-bezier(0.22, 0.8, 0.25, 1);
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        /* “选项之间的距离再大一点”：用 gap 拉开条目呼吸感 */
+        gap: 14px;
+      }
+
+      .roller-item {
+        width: min(420px, calc(100vw - 120px));
+        padding: 12px 16px;
+        border-radius: 14px;
+        font-size: 26px;
+        font-weight: 800;
+        letter-spacing: 1px;
+        color: rgba(255, 255, 255, 0.7);
+        background: rgba(255, 255, 255, 0.04);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        filter: blur(0.2px);
+        transform: scale(0.98);
+        transition: transform 140ms ease, color 140ms ease, box-shadow 180ms ease, background 180ms ease,
+          border-color 180ms ease;
+      }
+
+      /* “高光的颜色再红一点”：高饱和红色霓虹高光 + 渐变底色 */
+      .roller-item.is-active {
+        color: rgba(255, 255, 255, 0.98);
+        transform: scale(1.03);
+        border-color: rgba(255, 63, 77, 0.9);
+        background: linear-gradient(135deg, rgba(255, 38, 66, 0.55), rgba(255, 77, 79, 0.18));
+        box-shadow:
+          0 0 0 1px rgba(255, 63, 77, 0.25),
+          0 14px 40px rgba(255, 38, 66, 0.35),
+          0 0 26px rgba(255, 38, 66, 0.75);
+      }
+
+      .roller-item.is-dim {
+        opacity: 0.55;
+      }
+
+      .hint {
+        margin: 12px 0 0;
+        font-size: 12px;
+        color: rgba(255, 255, 255, 0.65);
+        line-height: 1.6;
+      }
+
+      .controls {
+        margin-top: 18px;
+        display: flex;
+        gap: 12px;
+        justify-content: center;
+      }
+
+      button {
+        appearance: none;
+        border: none;
+        border-radius: 12px;
+        padding: 12px 18px;
+        font-size: 16px;
+        font-weight: 700;
+        cursor: pointer;
+        color: white;
+        min-width: 140px;
+        transition: transform 0.08s ease, background-color 0.15s ease, opacity 0.15s ease;
+        box-shadow: 0 12px 34px rgba(0, 0, 0, 0.28);
+      }
+
+      button:active {
+        transform: translateY(1px) scale(0.99);
+      }
+
+      .btn-start {
+        background: var(--primary);
+      }
+
+      .btn-start:hover {
+        background: var(--primary-hover);
+      }
+
+      .btn-stop {
+        background: var(--danger);
+      }
+
+      .btn-stop:hover {
+        background: var(--danger-hover);
+      }
+
+      .sr-only {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
+      }
+
+      /* 震撼弹窗（Modal） */
+      .overlay {
+        position: fixed;
+        inset: 0;
+        display: grid;
+        place-items: center;
+        padding: 22px;
+        background: rgba(0, 0, 0, 0.55);
+        /* “增加氛围感”：毛玻璃背景遮罩 */
+        backdrop-filter: blur(10px);
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 160ms ease;
+      }
+
+      .overlay.is-open {
+        opacity: 1;
+        pointer-events: auto;
+      }
+
+      .modal {
+        width: min(520px, calc(100vw - 40px));
+        border-radius: 18px;
+        background: rgba(20, 26, 44, 0.86);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        box-shadow: 0 22px 80px rgba(0, 0, 0, 0.5);
+        padding: 22px 22px 18px;
+        transform: translateY(10px) scale(0.92);
+        opacity: 0;
+      }
+
+      /* 为了实现“震撼”效果：弹簧回弹动画（scale 0.1 -> 1.2 -> 1） */
+      .overlay.is-open .modal {
+        animation: popSpring 520ms cubic-bezier(0.2, 0.9, 0.2, 1.05) both;
+      }
+
+      @keyframes popSpring {
+        0% {
+          transform: translateY(18px) scale(0.1);
+          opacity: 0;
+        }
+        65% {
+          transform: translateY(0) scale(1.2);
+          opacity: 1;
+        }
+        100% {
+          transform: translateY(0) scale(1);
+          opacity: 1;
+        }
+      }
+
+      .modal-title {
+        margin: 0;
+        font-size: 14px;
+        letter-spacing: 0.6px;
+        color: rgba(255, 255, 255, 0.72);
+      }
+
+      .winner {
+        margin: 14px 0 8px;
+        font-size: 44px;
+        font-weight: 900;
+        letter-spacing: 1px;
+        line-height: 1.05;
+        background: linear-gradient(90deg, rgba(255, 38, 66, 1), rgba(255, 205, 77, 1));
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
+        text-shadow: 0 18px 44px rgba(255, 38, 66, 0.25);
+      }
+
+      .modal-desc {
+        margin: 0 0 16px;
+        color: rgba(255, 255, 255, 0.68);
+        font-size: 13px;
+        line-height: 1.7;
+      }
+
+      .modal-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 10px;
+      }
+
+      .btn-ghost {
+        background: rgba(255, 255, 255, 0.08);
+        box-shadow: none;
+        min-width: 120px;
+      }
+
+      .btn-ghost:hover {
+        background: rgba(255, 255, 255, 0.12);
+      }
+    </style>
+  </head>
+
+  <body>
+    <main class="app" role="application" aria-label="网页版抽奖应用">
+      <h1 class="title">基础抽奖</h1>
+
+      <section class="display" aria-label="名字展示区">
+        <!-- 展示区升级：滚动列表。中间条目会被高光标记为“当前焦点”。 -->
+        <div class="roller" aria-hidden="true">
+          <div id="track" class="roller-track"></div>
+        </div>
+        <!-- 屏幕阅读器友好：把“当前焦点名字”放在 aria-live 区域里播报 -->
+        <div id="name" class="sr-only" aria-live="polite">准备开始</div>
+      </section>
+
+      <p class="hint">
+        点击“开始”后，名字会快速随机切换；点击“停止”会定格在一个中奖者上，并弹窗提示。
+      </p>
+
+      <div class="controls">
+        <button id="toggleBtn" class="btn-start" type="button">
+          <span id="btnText">开始</span>
+          <span class="sr-only" id="btnState">未开始</span>
+        </button>
+      </div>
+    </main>
+
+    <!-- 震撼弹窗：废弃 alert()，改为自定义 Modal -->
+    <div id="overlay" class="overlay" role="dialog" aria-modal="true" aria-labelledby="modalTitle" aria-hidden="true">
+      <div class="modal" role="document">
+        <h2 id="modalTitle" class="modal-title">本次中奖者</h2>
+        <div id="winnerText" class="winner">—</div>
+        <p class="modal-desc">
+          恭喜你，中奖了！
+        </p>
+        <div class="modal-actions">
+          <button id="closeModalBtn" class="btn-ghost" type="button">关闭</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 特效：通过 CDN 引入轻量彩带库 canvas-confetti -->
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+    <script>
+
+      // 1) 数据源：模拟 10 个名字作为抽奖池
+      //    说明：真实业务里可能来自接口/文件/表单输入，但这里先用固定数组即可。
+      const candidates = [
+        "张三",
+        "李四",
+        "王五",
+        "赵六",
+        "钱七",
+        "孙八",
+        "周九",
+        "吴十",
+        "郑十一",
+        "王十二",
+      ];
+
+      // 2) 取 DOM：展示区和按钮
+      const nameEl = document.getElementById("name");
+      const trackEl = document.getElementById("track");
+      const toggleBtn = document.getElementById("toggleBtn");
+      const btnTextEl = document.getElementById("btnText");
+      const btnStateEl = document.getElementById("btnState");
+      const overlayEl = document.getElementById("overlay");
+      const winnerTextEl = document.getElementById("winnerText");
+      const closeModalBtn = document.getElementById("closeModalBtn");
+
+      // 3) 运行状态变量
+      //    timerId：保存 setInterval 返回的“定时器编号”
+      //    isRunning：表示当前是否正在滚动抽奖
+      let timerId = null;
+      let isRunning = false;
+
+      // 视觉滚动相关：我们展示 7 条，中心那条作为“当前焦点”
+      const VISIBLE_COUNT = 7; // 必须是奇数，才能有一个明确的“中间高光”
+      const ACTIVE_INDEX = Math.floor(VISIBLE_COUNT / 2); // 7 -> 3（0,1,2,3,4,5,6）
+      const visibleNames = [];
+      let activeName = "准备开始";
+      let stepPx = 0; // 单次“滚动一格”的位移距离（像老虎机每次滚动一行）
+      let isAnimating = false; // 防止动画还没结束就叠加下一次滚动
+
+      // 4) 工具函数：生成一个 [0, max) 的随机整数（重点：Math.random）
+      function randomInt(max) {
+        return Math.floor(Math.random() * max);
+      }
+
+      function randomName() {
+        return candidates[randomInt(candidates.length)];
+      }
+
+      function renderTrack() {
+        // 生成 7 条列表项：中间条目加高光，其它条目略微变暗
+        trackEl.innerHTML = visibleNames
+          .map((n, i) => {
+            const classes = ["roller-item"];
+            if (i === ACTIVE_INDEX) classes.push("is-active");
+            else classes.push("is-dim");
+            return `<div class="${classes.join(" ")}">${n}</div>`;
+          })
+          .join("");
+
+        // 同步“当前焦点”给 aria-live（无障碍播报/也方便你后续逻辑复用）
+        activeName = visibleNames[ACTIVE_INDEX] || "—";
+        nameEl.textContent = activeName;
+      }
+
+      function initRoller() {
+        visibleNames.length = 0;
+        for (let i = 0; i < VISIBLE_COUNT; i++) visibleNames.push(randomName());
+        renderTrack();
+        computeStepPx();
+      }
+
+      function computeStepPx() {
+        // 计算“滚动一格”的像素距离 = 单个条目的高度 + track 的 gap
+        const firstItem = trackEl.querySelector(".roller-item");
+        if (!firstItem) return;
+
+        const trackStyle = window.getComputedStyle(trackEl);
+        const gap = Number.parseFloat(trackStyle.gap || "0") || 0;
+        stepPx = firstItem.getBoundingClientRect().height + gap;
+      }
+
+      function rollOnce() {
+        if (isAnimating) return;
+        if (!stepPx) computeStepPx();
+        if (!stepPx) return;
+
+        isAnimating = true;
+
+        // 确保 transition 是开启状态（CSS 里也有，这里是为了防止被我们临时关掉后忘记恢复）
+        trackEl.style.transition = "transform 120ms cubic-bezier(0.22, 0.8, 0.25, 1)";
+
+        // 触发一次位移动画：向上滚动一格
+        // 用 requestAnimationFrame 保证样式变更被浏览器分帧处理，动画更稳定
+        requestAnimationFrame(() => {
+          trackEl.style.transform = `translateY(-${stepPx}px)`;
+        });
+
+        const onEnd = () => {
+          trackEl.removeEventListener("transitionend", onEnd);
+
+          // 动画结束：更新数据窗口（上面掉一个，下面补一个）
+          visibleNames.shift();
+          visibleNames.push(randomName());
+          renderTrack();
+
+          // 关键：把 track 瞬间归位到 0（并临时关闭 transition，避免看到“回弹”）
+          trackEl.style.transition = "none";
+          trackEl.style.transform = "translateY(0)";
+
+          // 下一帧再恢复 transition，准备下一次滚动
+          requestAnimationFrame(() => {
+            trackEl.style.transition = "transform 120ms cubic-bezier(0.22, 0.8, 0.25, 1)";
+            isAnimating = false;
+          });
+        };
+
+        trackEl.addEventListener("transitionend", onEnd);
+      }
+
+      // 5) 开始滚动：用 setInterval 让名字“快速随机切换”
+      function startRolling() {
+        if (isRunning) return;
+
+        isRunning = true;
+        btnTextEl.textContent = "停止";
+        btnStateEl.textContent = "进行中";
+        toggleBtn.classList.remove("btn-start");
+        toggleBtn.classList.add("btn-stop");
+
+        // 关键：创建定时器，并把返回值保存到 timerId
+        // 注意：这里把间隔稍微调到 90ms，配合“滚动一格”的过渡更顺滑、更像视频里的滚动
+        timerId = setInterval(() => {
+          rollOnce();
+        }, 90);
+      }
+
+      // 6) 停止滚动：clearInterval 停掉定时器 + 弹窗提示
+      function stopRolling() {
+        if (!isRunning) return;
+
+        clearInterval(timerId);
+        timerId = null;
+        isRunning = false;
+
+        btnTextEl.textContent = "开始";
+        btnStateEl.textContent = "未开始";
+        toggleBtn.classList.remove("btn-stop");
+        toggleBtn.classList.add("btn-start");
+
+        // 停止瞬间的“中奖者”就是当前高光条目
+        const winner = activeName;
+        openWinnerModal(winner);
+      }
+
+      // 7) 单按钮切换：开始 <-> 停止
+      toggleBtn.addEventListener("click", () => {
+        if (isRunning) stopRolling();
+        else startRolling();
+      });
+      function openWinnerModal(winner) {
+        // 为了实现“震撼”效果：使用自定义 Modal + 背景毛玻璃遮罩（见 CSS 的 .overlay / popSpring）
+        winnerTextEl.textContent = winner;
+        overlayEl.classList.add("is-open");
+        overlayEl.setAttribute("aria-hidden", "false");
+
+        // 为了实现“终极特效”：弹窗出现同时触发全屏彩带喷射（canvas-confetti）
+        // 说明：confetti 是由 CDN 脚本挂到 window 上的函数。
+        if (typeof window.confetti === "function") {
+          const base = {
+            particleCount: 80,
+            spread: 70,
+            startVelocity: 45,
+            gravity: 0.9,
+            scalar: 1.05,
+            ticks: 180,
+            origin: { x: 0.5, y: 0.25 },
+          };
+          window.confetti({ ...base, angle: 90 });
+          // 再补两次左右喷射，让更“炸裂”
+          window.confetti({ ...base, particleCount: 60, angle: 60, origin: { x: 0.15, y: 0.35 } });
+          window.confetti({ ...base, particleCount: 60, angle: 120, origin: { x: 0.85, y: 0.35 } });
+        }
+      }
+
+      function closeWinnerModal() {
+        overlayEl.classList.remove("is-open");
+        overlayEl.setAttribute("aria-hidden", "true");
+      }
+
+      closeModalBtn.addEventListener("click", closeWinnerModal);
+      overlayEl.addEventListener("click", (e) => {
+        // 点击遮罩区域关闭（点击卡片内部不关闭）
+        if (e.target === overlayEl) closeWinnerModal();
+      });
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape" && overlayEl.classList.contains("is-open")) closeWinnerModal();
+      });
+
+      // 8) 初始化：填充 7 条名字，让展示区一进来就“像可滚动的抽奖机”
+      initRoller();
+
+      // 窗口尺寸变化时，条目高度可能变化，重新计算 stepPx
+      window.addEventListener("resize", () => {
+        computeStepPx();
+      });
+    </script>
+  </body>
+</html>
+

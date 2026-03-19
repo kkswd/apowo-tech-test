@@ -1,0 +1,809 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>网页版抽奖 - 阶段一基础版</title>
+    <style>
+      :root {
+        --bg: #0b1220;
+        --card: rgba(255, 255, 255, 0.06);
+        --card-border: rgba(255, 255, 255, 0.12);
+        --text: rgba(255, 255, 255, 0.92);
+        --muted: rgba(255, 255, 255, 0.7);
+        --primary: #6d5efc;
+        --primary-hover: #5a4df5;
+        --danger: #ff4d4f;
+        --danger-hover: #e64547;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        width: 100vw;
+        height: 100vh;
+        overflow: hidden;
+        /* 全屏深色渐变背景，留出给球体的“宇宙空间感” */
+        background:
+          radial-gradient(circle at 50% 15%, #1f2937 0, #020617 55%, #000 100%),
+          radial-gradient(circle at 10% 120%, rgba(56, 189, 248, 0.12), transparent 60%),
+          radial-gradient(circle at 90% -10%, rgba(248, 113, 113, 0.16), transparent 55%);
+        color: var(--text);
+        font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "PingFang SC", "Microsoft YaHei",
+          sans-serif;
+      }
+
+      /* 外层容器不再是卡片，只作为布局容器，全屏铺满 */
+      .app {
+        position: relative;
+        width: 100vw;
+        height: 100vh;
+      }
+
+      /* 顶部当前奖项标题 */
+      .header-title {
+        position: fixed;
+        top: 18px;
+        left: 50%;
+        transform: translateX(-50%);
+        padding: 8px 18px;
+        border-radius: 999px;
+        font-size: 14px;
+        letter-spacing: 0.8px;
+        color: rgba(226, 232, 240, 0.95);
+        background: radial-gradient(circle at 0 0, rgba(56, 189, 248, 0.35), transparent 55%),
+          radial-gradient(circle at 100% 100%, rgba(248, 113, 113, 0.28), transparent 55%),
+          rgba(15, 23, 42, 0.9);
+        border: 1px solid rgba(148, 163, 184, 0.75);
+        box-shadow:
+          0 0 0 1px rgba(15, 23, 42, 0.9),
+          0 12px 32px rgba(15, 23, 42, 0.95);
+        backdrop-filter: blur(12px);
+        z-index: 40;
+        white-space: nowrap;
+      }
+
+      .display {
+        position: absolute;
+        inset: 0;
+        text-align: center;
+        overflow: hidden;
+      }
+
+      .display::before,
+      .display::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+      }
+
+      .display::before {
+        background: linear-gradient(
+          to bottom,
+          rgba(11, 18, 32, 0.85),
+          rgba(11, 18, 32, 0) 25%,
+          rgba(11, 18, 32, 0) 75%,
+          rgba(11, 18, 32, 0.85)
+        );
+        opacity: 0.75;
+      }
+
+      /* =========================================================
+         第三阶段：3D 名字球体（Tag Cloud）
+         - 禁用任何 3D 库，仅 CSS3 + 原生 JS
+         ========================================================= */
+
+      .stage {
+        position: absolute;
+        inset: 0;
+        display: grid;
+        place-items: center;
+        /* 关键：透视距离。值越小透视越强（更夸张），越大越“平” */
+        perspective: 900px;
+        perspective-origin: 50% 50%;
+      }
+
+      .sphere {
+        position: relative;
+        /* 全屏放大：在安全范围内尽量让球体更大一些 */
+        width: min(480px, 60vw, 60vh);
+        height: min(480px, 60vw, 60vh);
+        transform-style: preserve-3d;
+        /* 小幅呼吸，让待机状态更“活” */
+        animation: idleBreath 4.5s ease-in-out infinite;
+      }
+
+      @keyframes idleBreath {
+        0%,
+        100% {
+          transform: translateZ(0) scale(1);
+        }
+        50% {
+          transform: translateZ(0) scale(1.02);
+        }
+      }
+
+      /* 奖项管理侧栏 */
+      .prize-panel {
+        position: fixed;
+        left: 20px;
+        top: 50%;
+        transform: translateY(-50%);
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        z-index: 35;
+      }
+
+      .prize-card {
+        width: 180px;
+        padding: 10px 10px 9px;
+        border-radius: 14px;
+        background: radial-gradient(circle at 0 0, rgba(148, 163, 184, 0.32), transparent 60%),
+          rgba(15, 23, 42, 0.82);
+        border: 1px solid rgba(148, 163, 184, 0.7);
+        box-shadow:
+          0 0 0 1px rgba(15, 23, 42, 0.9),
+          0 14px 36px rgba(15, 23, 42, 0.95);
+        backdrop-filter: blur(12px);
+        display: grid;
+        grid-template-columns: 36px 1fr;
+        grid-template-rows: auto auto;
+        column-gap: 10px;
+        row-gap: 4px;
+        cursor: pointer;
+        transition:
+          transform 0.12s ease,
+          box-shadow 0.15s ease,
+          border-color 0.15s ease,
+          background 0.15s ease;
+      }
+
+      .prize-card:hover {
+        transform: translateY(-1px);
+        box-shadow:
+          0 0 0 1px rgba(248, 250, 252, 0.35),
+          0 18px 40px rgba(15, 23, 42, 1);
+      }
+
+      .prize-card.is-active {
+        background: radial-gradient(circle at 0 0, rgba(248, 113, 113, 0.7), transparent 55%),
+          radial-gradient(circle at 100% 100%, rgba(56, 189, 248, 0.65), transparent 55%),
+          rgba(15, 23, 42, 0.94);
+        border-color: rgba(248, 113, 113, 0.95);
+        box-shadow:
+          0 0 0 1px rgba(248, 113, 113, 0.95),
+          0 0 22px rgba(248, 113, 113, 0.9),
+          0 18px 50px rgba(15, 23, 42, 1);
+      }
+
+      .prize-thumb {
+        width: 36px;
+        height: 36px;
+        border-radius: 10px;
+        background: radial-gradient(circle at 0 0, rgba(248, 250, 252, 0.85), transparent 60%),
+          rgba(15, 23, 42, 0.9);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 18px;
+        color: rgba(15, 23, 42, 0.98);
+        box-shadow: 0 8px 22px rgba(15, 23, 42, 0.9);
+      }
+
+      .prize-name {
+        font-size: 13px;
+        font-weight: 700;
+        letter-spacing: 0.6px;
+        color: rgba(226, 232, 240, 0.96);
+      }
+
+      .prize-count {
+        font-size: 12px;
+        color: rgba(148, 163, 184, 0.96);
+      }
+
+      .prize-badge {
+        grid-column: 1 / -1;
+        justify-self: flex-start;
+        padding: 2px 8px;
+        border-radius: 999px;
+        font-size: 10px;
+        letter-spacing: 0.3px;
+        color: rgba(226, 232, 240, 0.9);
+        background: rgba(30, 64, 175, 0.8);
+      }
+
+      .tag {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        transform-style: preserve-3d;
+        transform: translate3d(0, 0, 0);
+        transform-origin: center;
+        padding: 8px 12px;
+        border-radius: 999px;
+        font-weight: 900;
+        letter-spacing: 0.6px;
+        font-size: 16px;
+        color: rgba(255, 255, 255, 0.88);
+        background: rgba(255, 255, 255, 0.06);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        box-shadow: 0 12px 34px rgba(0, 0, 0, 0.22);
+        user-select: none;
+        white-space: nowrap;
+        will-change: transform, opacity, filter;
+        transition: opacity 220ms ease, filter 220ms ease;
+      }
+
+      .tag.is-dimmed {
+        opacity: 0.14 !important;
+        filter: blur(1.4px) saturate(0.8) !important;
+      }
+
+      /* 开奖时：中奖者飞到屏幕中心并高光放大（震撼红色霓虹） */
+      .winner-overlay {
+        position: fixed;
+        inset: 0;
+        display: grid;
+        place-items: center;
+        background: rgba(0, 0, 0, 0.55);
+        backdrop-filter: blur(10px);
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 160ms ease;
+      }
+
+      .winner-overlay.is-open {
+        opacity: 1;
+        pointer-events: auto;
+      }
+
+      .winner-card {
+        padding: 18px 22px 20px;
+        border-radius: 18px;
+        background: rgba(20, 26, 44, 0.9);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        box-shadow: 0 22px 80px rgba(0, 0, 0, 0.5);
+        text-align: center;
+        min-width: min(520px, calc(100vw - 40px));
+      }
+
+      .winner-title {
+        margin: 0;
+        font-size: 14px;
+        letter-spacing: 0.6px;
+        color: rgba(255, 255, 255, 0.72);
+      }
+
+      .winner-name {
+        margin: 16px 0 18px;
+        font-size: 52px;
+        font-weight: 1000;
+        letter-spacing: 1px;
+        line-height: 1.05;
+        background: linear-gradient(90deg, rgba(255, 38, 66, 1), rgba(255, 205, 77, 1));
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
+        text-shadow: 0 18px 44px rgba(255, 38, 66, 0.25);
+      }
+
+      /* 中奖卡片内部的按钮区域，避免复用全局 .controls 导致重叠 */
+      .winner-actions {
+        margin-top: 10px;
+        display: flex;
+        justify-content: center;
+      }
+
+      .winner-actions button {
+        border-radius: 999px;
+        padding: 10px 28px;
+        font-size: 16px;
+        min-width: 160px;
+        box-shadow:
+          0 0 0 1px rgba(248, 113, 113, 0.7),
+          0 0 18px rgba(248, 113, 113, 0.9),
+          0 14px 32px rgba(15, 23, 42, 1);
+      }
+
+      /* 为了实现“震撼”效果：弹簧回弹动画（scale 0.1 -> 1.2 -> 1） */
+      .winner-overlay.is-open .winner-card {
+        animation: popSpring 520ms cubic-bezier(0.2, 0.9, 0.2, 1.05) both;
+      }
+
+      .controls {
+        /* 悬浮在屏幕底部偏上的位置 */
+        position: fixed;
+        left: 50%;
+        bottom: 10%;
+        transform: translateX(-50%);
+        z-index: 50;
+      }
+
+      button {
+        appearance: none;
+        border: none;
+        border-radius: 999px;
+        padding: 14px 32px;
+        font-size: 18px;
+        font-weight: 700;
+        cursor: pointer;
+        color: white;
+        min-width: 200px;
+        /* 悬浮按钮的玻璃 + 霓虹质感 */
+        background: radial-gradient(circle at 0 0, rgba(56, 189, 248, 0.9), transparent 55%),
+          radial-gradient(circle at 100% 100%, rgba(248, 113, 113, 0.9), transparent 55%),
+          rgba(15, 23, 42, 0.9);
+        box-shadow:
+          0 0 0 1px rgba(148, 163, 184, 0.6),
+          0 0 18px rgba(56, 189, 248, 0.95),
+          0 0 38px rgba(248, 113, 113, 0.95),
+          0 20px 50px rgba(15, 23, 42, 0.95);
+        backdrop-filter: blur(10px);
+        transition:
+          transform 0.12s ease,
+          background 0.18s ease,
+          box-shadow 0.18s ease,
+          opacity 0.15s ease;
+      }
+
+      button:active {
+        transform: translateY(1px) scale(0.99);
+      }
+
+      /* 利用按钮状态类仅做语义区分，这里不额外添加样式，避免空规则集告警 */
+
+      .sr-only {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
+      }
+      @keyframes popSpring {
+        0% {
+          transform: translateY(18px) scale(0.1);
+          opacity: 0;
+        }
+        65% {
+          transform: translateY(0) scale(1.2);
+          opacity: 1;
+        }
+        100% {
+          transform: translateY(0) scale(1);
+          opacity: 1;
+        }
+      }
+    </style>
+  </head>
+
+  <body>
+    <div id="currentPrizeTitle" class="header-title">正在抽取：未选择奖项</div>
+
+    <!-- 左侧奖项管理栏 -->
+    <aside class="prize-panel" aria-label="奖项管理">
+      <div class="prize-card" data-prize-id="0">
+        <div class="prize-thumb">特</div>
+        <div>
+          <div class="prize-name">特等奖</div>
+          <div class="prize-count" data-prize-count="0">0/0</div>
+        </div>
+        <div class="prize-badge">限量大奖</div>
+      </div>
+      <div class="prize-card" data-prize-id="1">
+        <div class="prize-thumb">一</div>
+        <div>
+          <div class="prize-name">一等奖</div>
+          <div class="prize-count" data-prize-count="1">0/0</div>
+        </div>
+        <div class="prize-badge">核心奖项</div>
+      </div>
+      <div class="prize-card" data-prize-id="2">
+        <div class="prize-thumb">二</div>
+        <div>
+          <div class="prize-name">二等奖</div>
+          <div class="prize-count" data-prize-count="2">0/0</div>
+        </div>
+        <div class="prize-badge">普惠奖项</div>
+      </div>
+    </aside>
+
+    <main class="app" role="application" aria-label="3D 名字球体抽奖全屏版">
+      <section class="display" aria-label="名字展示区">
+        <div class="stage" aria-hidden="true">
+          <div id="sphere" class="sphere"></div>
+        </div>
+        <!-- 屏幕阅读器友好：播报“当前中奖者/当前状态” -->
+        <div id="name" class="sr-only" aria-live="polite">待机中</div>
+      </section>
+    </main>
+
+    <!-- 悬浮在底部的开始/停止按钮 -->
+    <div class="controls">
+      <button id="toggleBtn" class="btn-start" type="button">
+        <span id="btnText">开始</span>
+        <span class="sr-only" id="btnState">未开始</span>
+      </button>
+    </div>
+
+    <!-- 开奖高光层：中奖者“飞到正中间”并高光放大（带毛玻璃遮罩） -->
+    <div id="winnerOverlay" class="winner-overlay" role="dialog" aria-modal="true" aria-hidden="true">
+      <div class="winner-card" role="document">
+        <h2 class="winner-title">本次中奖者</h2>
+        <div id="winnerName" class="winner-name">—</div>
+        <div class="winner-actions">
+          <button id="closeWinnerBtn" class="btn-stop" type="button">关闭</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 终极特效（加分项）：通过 CDN 引入轻量彩带库 canvas-confetti -->
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+    <script>
+
+      // 1) 数据源：模拟 20~30 个名字（更像“球体标签云”）
+      const candidates = [
+        "张三",
+        "李四",
+        "王五",
+        "赵六",
+        "钱七",
+        "孙八",
+        "周九",
+        "吴十",
+        "郑十一",
+        "王十二",
+        "刘十三",
+        "陈十四",
+        "杨十五",
+        "黄十六",
+        "周十七",
+        "胡十八",
+        "高十九",
+        "林二十",
+        "何二一",
+        "郭二二",
+        "马二三",
+        "罗二四",
+        "梁二五",
+        "宋二六",
+      ];
+
+      // 奖项数据：特等奖 1 名，一等奖 3 名，二等奖 10 名
+      const prizes = [
+        { id: 0, name: "特等奖", total: 1, remaining: 1 },
+        { id: 1, name: "一等奖", total: 3, remaining: 3 },
+        { id: 2, name: "二等奖", total: 10, remaining: 10 },
+      ];
+      let currentPrizeIndex = null; // 当前选中的奖项在 prizes 中的下标
+
+      // 2) 取 DOM
+      const nameEl = document.getElementById("name");
+      const sphereEl = document.getElementById("sphere");
+      const toggleBtn = document.getElementById("toggleBtn");
+      const btnTextEl = document.getElementById("btnText");
+      const btnStateEl = document.getElementById("btnState");
+      const winnerOverlayEl = document.getElementById("winnerOverlay");
+      const winnerNameEl = document.getElementById("winnerName");
+      const closeWinnerBtn = document.getElementById("closeWinnerBtn");
+      const currentPrizeTitleEl = document.getElementById("currentPrizeTitle");
+      const prizeCards = Array.from(document.querySelectorAll(".prize-card"));
+
+      // 3) 运行状态：用“角速度”来控制球体自转速度（待机慢、抽奖疯、停止急刹）
+      let isRunning = false; // 抽奖是否进行中
+      let hasWinner = false; // 是否已开奖
+
+      // 当前旋转角度（单位：弧度）。rotateX/rotateY 组合就能有“3D 球体自转”的感觉。
+      let rotX = 0.25;
+      let rotY = 0;
+
+      // 当前角速度 & 目标角速度（单位：弧度/秒）
+      let omega = 0.25; // 待机慢转
+      let targetOmega = 0.25;
+
+      // 球体半径：用像素表示（越大球越大）
+      let R = 140;
+
+      // 每个名字在“球面上的原始坐标”（不随旋转变化）
+      const points = []; // { x, y, z, name, el }
+
+      // 中奖者
+      let winnerIndex = -1;
+
+      // 4) 工具函数：随机整数（用于抽一个赢家）
+      function randomInt(max) {
+        return Math.floor(Math.random() * max);
+      }
+      function buildSphere() {
+        sphereEl.innerHTML = "";
+        points.length = 0;
+        hasWinner = false;
+        winnerIndex = -1;
+
+        // 根据容器尺寸动态设置半径
+        const rect = sphereEl.getBoundingClientRect();
+        R = Math.max(110, Math.min(rect.width, rect.height) * 0.46);
+
+        const N = candidates.length;
+        const goldenAngle = Math.PI * (3 - Math.sqrt(5)); // 约等于 2.399... 弧度
+
+        for (let i = 0; i < N; i++) {
+          const y = 1 - (2 * (i + 0.5)) / N; // 范围大致在 (-1, +1)
+          const r = Math.sqrt(1 - y * y);
+          const theta = goldenAngle * i;
+          const x = Math.cos(theta) * r;
+          const z = Math.sin(theta) * r;
+
+          const el = document.createElement("div");
+          el.className = "tag";
+          el.textContent = candidates[i];
+          sphereEl.appendChild(el);
+
+          points.push({
+            name: candidates[i],
+            x: x * R,
+            y: y * R,
+            z: z * R,
+            el,
+          });
+        }
+      }
+
+      /**********************************************************************
+       * 6) 3D 旋转 + 深度效果（近大远小、近清晰远模糊/透明）
+       **********************************************************************/
+      function rotatePoint(p, ax, ay) {
+        // 先绕 Y 轴转（左右转头），再绕 X 轴转（上下点头）
+        const cosY = Math.cos(ay);
+        const sinY = Math.sin(ay);
+        const cosX = Math.cos(ax);
+        const sinX = Math.sin(ax);
+
+        // 绕 Y：x/z 变化，y 不变
+        let x = p.x * cosY + p.z * sinY;
+        let z = -p.x * sinY + p.z * cosY;
+        let y = p.y;
+
+        // 绕 X：y/z 变化，x 不变
+        const y2 = y * cosX - z * sinX;
+        const z2 = y * sinX + z * cosX;
+
+        return { x, y: y2, z: z2 };
+      }
+
+      function renderFrame() {
+        for (let i = 0; i < points.length; i++) {
+          const p = points[i];
+          const v = rotatePoint(p, rotX, rotY);
+
+          // 深度归一化：z 越大表示越靠近屏幕（更“近”）
+          const depth01 = (v.z + R) / (2 * R); // 约 0~1
+          const scale = 0.55 + depth01 * 0.9; // 近处更大
+          const opacity = 0.2 + depth01 * 0.85; // 远处更透明
+          const blur = (1 - depth01) * 1.4; // 远处更模糊（用 blur 代替真正景深）
+
+          // 让标签以“球心”为原点：
+          // - CSS 里 .tag 已经是 top:50%, left:50%
+          // - 这里先用 translate(-50%, -50%) 把标签自身中心对齐到球心
+          // - 再通过 translate3d(v.x, v.y, v.z) 把点分布到球面上
+          p.el.style.transform = `translate(-50%, -50%) translate3d(${v.x}px, ${v.y}px, ${v.z}px) scale(${scale})`;
+          p.el.style.opacity = opacity.toFixed(3);
+          p.el.style.filter = `blur(${blur.toFixed(2)}px)`;
+          p.el.style.zIndex = String(Math.floor(depth01 * 1000));
+        }
+      }
+
+      /**********************************************************************
+       * 7) 动画主循环：requestAnimationFrame（比 setInterval 更适合动画）
+       **********************************************************************/
+      let lastTs = performance.now();
+      function tick(ts) {
+        const dt = Math.min(0.05, (ts - lastTs) / 1000); // 秒，避免切后台后 dt 过大
+        lastTs = ts;
+
+        // 角速度缓动到目标角速度：让“加速/减速”更像物理惯性
+        omega += (targetOmega - omega) * (1 - Math.pow(0.001, dt));
+
+        rotY += omega * dt;
+        rotX += omega * 0.25 * dt; // 轻微的 X 轴自转，增加 3D 眩晕感
+
+        renderFrame();
+        requestAnimationFrame(tick);
+      }
+
+      /**********************************************************************
+       * 8) 开始/停止交互
+       **********************************************************************/
+      function start() {
+        if (isRunning) return;
+        if (winnerOverlayEl.classList.contains("is-open")) return;
+        if (currentPrizeIndex === null) {
+          // 未选择奖项时不给开始，避免“无奖可抽”的困惑
+          currentPrizeTitleEl.textContent = "正在抽取：请先在左侧选择一个奖项";
+          return;
+        }
+
+        isRunning = true;
+        hasWinner = false;
+        winnerIndex = -1;
+        nameEl.textContent = "抽奖中（疯狂旋转）";
+
+        btnTextEl.textContent = "停止";
+        btnStateEl.textContent = "进行中";
+        toggleBtn.classList.remove("btn-start");
+        toggleBtn.classList.add("btn-stop");
+
+        // 抽奖状态：疯狂加速旋转（眩晕刺激感）
+        targetOmega = 7.5;
+
+        // 清掉可能残留的暗淡状态
+        for (const p of points) p.el.classList.remove("is-dimmed");
+      }
+
+      function stop() {
+        if (!isRunning) return;
+        isRunning = false;
+
+        btnTextEl.textContent = "开始";
+        btnStateEl.textContent = "未开始";
+        toggleBtn.classList.remove("btn-stop");
+        toggleBtn.classList.add("btn-start");
+
+        // 停止状态：急速减速（让 targetOmega 迅速回到待机速度）
+        targetOmega = 0.22;
+
+        // 随机选一个中奖者（你后续也可以改成“不重复中奖”等规则）
+        winnerIndex = randomInt(points.length);
+
+        // 等速度明显慢下来再“开奖”，视觉会更有冲击（像急刹后定格）
+        waitForSlowThenReveal();
+      }
+
+      function waitForSlowThenReveal() {
+        // 用一个轻量轮询：当 omega 降到阈值附近，就触发开奖效果
+        const check = () => {
+          if (hasWinner) return;
+          if (Math.abs(omega - targetOmega) < 0.25) {
+            revealWinner();
+            return;
+          }
+          requestAnimationFrame(check);
+        };
+        requestAnimationFrame(check);
+      }
+
+      function revealWinner() {
+        if (winnerIndex < 0) return;
+        hasWinner = true;
+
+        const winner = points[winnerIndex];
+        nameEl.textContent = `中奖者：${winner.name}`;
+
+        // 抽中后，扣减当前奖项的剩余数量
+        if (currentPrizeIndex !== null) {
+          const prize = prizes[currentPrizeIndex];
+          if (prize.remaining > 0) {
+            prize.remaining -= 1;
+            updatePrizePanel();
+          }
+        }
+
+        // 1) 非中奖者全部暗淡/透明，突出赢家
+        for (let i = 0; i < points.length; i++) {
+          if (i === winnerIndex) continue;
+          points[i].el.classList.add("is-dimmed");
+        }
+        winnerNameEl.textContent = winner.name;
+        winnerOverlayEl.classList.add("is-open");
+        winnerOverlayEl.setAttribute("aria-hidden", "false");
+        if (typeof window.confetti === "function") {
+          const base = {
+            particleCount: 90,
+            spread: 80,
+            startVelocity: 48,
+            gravity: 0.9,
+            scalar: 1.1,
+            ticks: 200,
+          };
+          window.confetti({ ...base, origin: { x: 0.5, y: 0.28 } });
+          window.confetti({ ...base, particleCount: 60, angle: 60, origin: { x: 0.18, y: 0.35 } });
+          window.confetti({ ...base, particleCount: 60, angle: 120, origin: { x: 0.82, y: 0.35 } });
+        }
+      }
+
+      function closeWinner() {
+        winnerOverlayEl.classList.remove("is-open");
+        winnerOverlayEl.setAttribute("aria-hidden", "true");
+        nameEl.textContent = "待机中";
+
+        // 回到待机：恢复慢转，恢复亮度
+        targetOmega = 0.25;
+        for (const p of points) p.el.classList.remove("is-dimmed");
+      }
+
+      toggleBtn.addEventListener("click", () => {
+        if (isRunning) stop();
+        else start();
+      });
+
+      closeWinnerBtn.addEventListener("click", closeWinner);
+      winnerOverlayEl.addEventListener("click", (e) => {
+        if (e.target === winnerOverlayEl) closeWinner();
+      });
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape" && winnerOverlayEl.classList.contains("is-open")) closeWinner();
+      });
+
+      /**********************************************************************
+       * 9) 奖项管理逻辑（与抽奖逻辑解耦）
+       **********************************************************************/
+      function updatePrizePanel() {
+        // 更新左侧奖项卡片上的“剩余/总数”文案，并同步选中态
+        prizeCards.forEach((card) => {
+          const id = Number(card.getAttribute("data-prize-id"));
+          const prize = prizes.find((p) => p.id === id);
+          const countEl = card.querySelector('[data-prize-count]');
+          if (prize && countEl) {
+            countEl.textContent = `${prize.remaining}/${prize.total}`;
+          }
+
+          if (currentPrizeIndex !== null && prizes[currentPrizeIndex].id === id) {
+            card.classList.add("is-active");
+          } else {
+            card.classList.remove("is-active");
+          }
+        });
+
+        if (currentPrizeIndex === null) {
+          currentPrizeTitleEl.textContent = "正在抽取：未选择奖项";
+        } else {
+          const prize = prizes[currentPrizeIndex];
+          currentPrizeTitleEl.textContent = `正在抽取：${prize.name}`;
+        }
+      }
+
+      function triggerSpherePulse() {
+        // 为了表示“抽奖池已重组准备好”，这里采用极简逻辑：
+        // - 暂时把 X 轴旋转角度略微增加一点，再缓慢减回去
+        const originalRotX = rotX;
+        rotX = originalRotX + 0.35;
+        setTimeout(() => {
+          rotX = originalRotX;
+        }, 260);
+      }
+
+      prizeCards.forEach((card) => {
+        card.addEventListener("click", () => {
+          const id = Number(card.getAttribute("data-prize-id"));
+          const index = prizes.findIndex((p) => p.id === id);
+          if (index === -1) return;
+
+          currentPrizeIndex = index;
+          updatePrizePanel();
+          triggerSpherePulse();
+        });
+      });
+
+      // 10) 初始化：构建球体并启动动画循环 + 初始化奖项栏
+      buildSphere();
+      renderFrame();
+      requestAnimationFrame(tick);
+      updatePrizePanel();
+
+      // 窗口变化：重建球体（半径会变）
+      window.addEventListener("resize", () => {
+        buildSphere();
+      });
+    </script>
+  </body>
+</html>
+
